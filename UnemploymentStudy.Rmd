@@ -1,0 +1,243 @@
+---
+title: "Unemployment Study"
+author: "Jaedin Hernandez"
+date: "2025-09-09"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(comment = NA)
+```
+
+### Background
+
+I will be conducting a study of the unemployment rate in major cities by following unemployment tends from 2019 to 2023. Our primary tools for research shall be ANOVA and multiple linear regression models to determine if unemployment rate is affected by factors such as region, age, % of unemployed with degrees, date, and job postings.
+
+The primary use of this study will be to determine if there is a discrepancy in the unemployment factors year around, vs during months of college graduation. This is due to a high volume of persons being introduced into the work force during these periods, which could cause discrepancy in our overall results if not first targeted.
+
+```{r}
+##Install SQL libraries
+library(DBI)
+library(RSQLite)
+library(dplyr)
+
+## Connect unemployment rate database to R
+database <- dbConnect(SQLite(), "Unemployment.sqlite")
+
+dbListTables(database)
+dbListFields(database, "GradMonthUnemployment")
+```
+
+### Data prep for graduation period unemployment
+
+```{r}
+# Create a table for unemployment rates during graduation months
+GradUnemployment <- tbl(database, "GradMonthUnemployment")
+GradUnemployment
+
+GradUnemployment_df <- collect(GradUnemployment)
+
+# Create Variables for each grad month column
+Location_G <- GradUnemployment_df$location
+Rate_G <- GradUnemployment_df$unemployment_rate
+Postings_G <- GradUnemployment_df$job_postings
+Age_G <- GradUnemployment_df$average_age
+Degree_G <- GradUnemployment_df$college_degree_percentage
+Year_G <- GradUnemployment_df$year
+```
+
+### Calculations
+
+We shall perform one way ANOVA for unemployment rate based on location for data collected during graduation months. (May, August, December)
+
+```{r}
+# Perform ANOVA for unemployment rate based on location in college graduation months
+aovLocationRateG <- aov(Rate_G~Location_G, data=GradUnemployment_df)
+aovLocationRateG
+
+SummaryLocationRateG <- summary(aovLocationRateG)
+SummaryLocationRateG
+
+## Perform multiple linear regression for unemployment in graduation months
+RegressionModelG <- lm(Rate_G ~ Postings_G + Age_G + Degree_G + Year_G, data=GradUnemployment_df)
+RegressionModelG
+SummaryStatsRegG <- summary(RegressionModelG)
+SummaryStatsRegG
+```
+
+### Analysis
+
+The results indicate that the predictors—job postings, age, degree percentage, and graduation year—are not statistically significant, with all p-values above 0.05 and an overall model p-value of 0.3491. Additionally, the model explains only 2.3% of the variance (R² = 0.0226), suggesting these variables are poor predictors of unemployment rate during graduation months.
+
+### Further calculations
+
+Due to a lack of findings in our ANOVA test, we shall try using polynomial regression models for unemployment rate in graduation months based on job postings and college degree percentages.
+
+```{r}
+#Create Polynomial variable for job postings and degree percentage
+Postings_G2 <- GradUnemployment_df$job_postings^2
+Degree_G2 <- GradUnemployment_df$college_degree_percentage^2
+
+#Run polynomial regression models for postings and degree in predicting rate
+postings_poly <- lm(Rate_G ~ Postings_G + Postings_G2 + Age_G + Degree_G, data = GradUnemployment_df)
+summary(postings_poly)
+
+degree_poly <- lm(Rate_G ~ Postings_G + Age_G + Degree_G + Degree_G2, data = GradUnemployment_df)
+summary(degree_poly)
+```
+
+### Data prep for unemployment rates(Year Around)
+
+```{r}
+# Create table for overall unemployment rates
+Unemployment <- tbl(database, "MarketTrends")
+Unemployment
+
+Unemployment_df <- collect(Unemployment)
+summary(Unemployment_df)
+# Create variables for each unemployment column
+Location_U <- Unemployment_df$location
+Rate_U <- Unemployment_df$unemployment_rate
+Postings_U <- Unemployment_df$job_postings
+Skills_U <- Unemployment_df$in_demand_skills
+Degree_U <- Unemployment_df$college_degree_percentage
+Age_U <- Unemployment_df$average_age
+```
+
+### Calculations We shall perform one way ANOVA for unemployment rates
+
+```{r}
+aovLocationRate <- aov(Rate_U~Location_U, data=Unemployment_df)
+aovLocationRate
+
+SummaryStatsLocationRate <- summary(aovLocationRate)
+SummaryStatsLocationRate
+```
+
+### Analysis
+
+We notice that our P-Value(0.779)\>alpha(0.05) thus we do not reject H0 as the mean unemployment rate does not differ among different cities in this dataset. Theirfore we shall run a multiple linear regression model to determine if any numerical predictors appear to be a good fit.
+
+### Regression model
+
+```{r}
+RegressionModel_U <- lm(Rate_U ~ Postings_U + Degree_U + Age_U, data=Unemployment_df)
+RegressionModel_U
+SummaryReg <- summary(RegressionModel_U)
+SummaryReg
+```
+
+### Analysis
+
+We notice that our numerical predictors (degree%, Postings, and Age) do not have a p-value\<0.05, theirfore our numerical predictors are determined to have little effect on unemployment rate in this data set. Thus we shall attempt to find discrepencies in rate by catagorical data.
+
+### Plots for unemployment by month
+
+```{r}
+#Convert date column to Date format
+Unemployment_df$date <- as.Date(Unemployment_df$date)
+
+#Extract month
+Unemployment_df$Month <- format(Unemployment_df$date, "%B")
+Unemployment_df$Month <- factor(Unemployment_df$Month, 
+                                    levels = month.name) 
+
+#Average Unemployment rate by month
+avg_rate_by_month <- tapply(Unemployment_df$unemployment_rate, Unemployment_df$Month, mean, na.rm = TRUE)
+
+barplot(avg_rate_by_month,
+        main= "Unemployment Rate by Month",
+        xlab= "Month",
+        ylab= "Unemployment(%)",
+        col= "purple",
+        las = 2)
+```
+
+### Plots for unemployment by location(Year Around)
+
+```{r}
+# Calculate mean unemployment rate per location
+avg_rate_by_location <- tapply(Rate_G, Location_G, mean, na.rm = TRUE)
+
+# Create bar plot
+barplot(avg_rate_by_location,
+        main = "Average Unemployment Rate by Location",
+        xlab = "Location",
+        ylab = "Unemployment Rate (%)",
+        col = "skyblue",
+        las = 2,          # Rotate x-axis labels
+        cex.names = 0.7)  # Shrink label size if names are long
+
+```
+
+### Analysis
+
+We notice New York has the lowest unemployment rate by location, theirfore we should try to target this area in our study in order to discover any discrepancys in the time period or job postings.
+
+We also determine that Fort Worth is the leader in unemployment regions in this study. For this we shal further analyze the unemployment rates over time for this region.
+
+### Unemployment rate by month in New York
+
+```{R}
+# Filter data set for New York location only
+Ny_Unemployment <- subset(Unemployment_df, location == "New York")
+
+#Convert date column to Date format
+Ny_Unemployment$date <- as.Date(Ny_Unemployment$date)
+
+#Extract month
+Ny_Unemployment$Month <- format(Ny_Unemployment$date, "%B")
+Ny_Unemployment$Month <- factor(Ny_Unemployment$Month, 
+                                    levels = month.name) 
+#Calculate average unemployment by month in New York
+NyRate_by_month <- tapply(Ny_Unemployment$unemployment_rate,
+                          Ny_Unemployment$Month,
+                          mean,
+                          na.rm=TRUE)
+barplot(NyRate_by_month,
+        main = "New York Unemployment by Month",
+        xlab="Month",
+        ylab="Unemployment(%)",
+        col="orange",
+        las=2)
+
+```
+
+### Analysis
+
+We notice by this graph, unemployment appears to spike during the months of March, July, and October. These also happen to be the months where quarterly reports are released for most large corporations. This, along with other factors could lead to a discrepency in unemployment, rather than periods of college graduation. Further study targeting these months, along with corporate employment data may be required for further analysis.
+
+### Unemplyment rate by month in Fort Worth
+
+```{r}
+FW_Unemployment <- subset(Unemployment_df, location == 'Fort Worth')
+
+FW_Unemployment$date <- as.Date(FW_Unemployment$date)
+
+FW_Unemployment$Month <- format(FW_Unemployment$date, "%B")
+FW_Unemployment$Month <- factor(FW_Unemployment$Month,
+                                levels = month.name)
+
+FW_unemp_by_month <- tapply(FW_Unemployment$unemployment_rate,
+                            FW_Unemployment$Month, mean,
+                            na.rm = TRUE)
+
+barplot(FW_unemp_by_month,
+        main = "Fort Worth Unemployment by Month",
+        xlab = "Month",
+        ylab = "Unemployment(%)",
+        col = "red",
+        las = 2)
+```
+
+### Analysis
+
+The unemployment rate in Fort Worth peaks notably in February, May, and August. This likely reflects the expiration of many military service contracts in December and January, resulting in a surge of civilian career transitions in February, a pattern common in military base regions. Additionally, May and August align with major college graduation months, contributing to higher unemployment rates. December also shows elevated unemployment, possibly due to a combination of expiring contracts and fall graduates entering the workforce.
+
+### Conclusion
+
+In this study, we applied ANOVA and multiple linear regression to examine the relationship between unemployment rate and various factors including time of year, region, average age, job postings, and education level. Our statistical models showed no significant correlation between unemployment rate and numerical predictors, with p-values above 0.05 and low R² values.
+
+However, visual analysis revealed notable patterns. Cities like Fort Worth and New York exhibited unemployment spikes during months tied to college graduations, military contract expirations, and corporate layoffs. These trends suggest that while our models did not detect strong statistical relationships, categorical and seasonal factors may still play a significant role in unemployment variation and merit further investigation.
